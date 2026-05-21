@@ -1,0 +1,38 @@
+# Build artifacts
+build/
+cmake-build-*/
+out/
+bin/
+obj/
+
+# C/C++
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.exe
+*.d
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
