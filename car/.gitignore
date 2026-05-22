@@ -1,0 +1,5 @@
+build/
+build-clean/
+.vscode/
+cmake-full.log
+cmake-trace.log
