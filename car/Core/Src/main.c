@@ -48,6 +48,8 @@
 #define LINE_KP             (55)
 #define PWM_ARR_MAX_I32     (3599)
 #define IR_DRUG_ACTIVE_LEVEL (0U)
+#define BEEP_ACTIVE_LEVEL    (GPIO_PIN_RESET) /* low-level trigger */
+#define BEEP_IDLE_LEVEL      (GPIO_PIN_SET)
 
 /* USER CODE END PD */
 
@@ -64,12 +66,16 @@ static uint32_t s_last_motor_log_ms = 0;
 static uint32_t s_last_gray_log_ms = 0;
 static uint32_t s_last_line_ctrl_ms = 0;
 static uint32_t s_last_ir_log_ms = 0;
+static uint32_t s_last_beep_tick_ms = 0;
 static int32_t s_prev_enc_l = 0;
 static int32_t s_prev_enc_r = 0;
 static uint32_t s_last_oled_ms = 0;
 static int32_t s_last_line_err = 0;
 static uint8_t s_last_gray_mask = 0;
 static uint8_t s_drug_present = 0;
+static uint16_t s_cmd_pwm_l = 0;
+static uint16_t s_cmd_pwm_r = 0;
+static uint8_t s_beep_on = 0;
 
 /* USER CODE END PV */
 
@@ -89,6 +95,8 @@ static int32_t Line_CalcError(uint8_t gray_mask);
 static void LineFollow_Update(void);
 static uint8_t IR_DrugPresent(void);
 static void LED_Update(uint8_t drug_present);
+static void BEEP_Set(uint8_t on);
+static void BEEP_Update(void);
 
 /* USER CODE END PFP */
 
@@ -175,6 +183,7 @@ int main(void)
         Motor_Stop();
       }
     }
+    BEEP_Update();
     if ((HAL_GetTick() - s_last_gray_log_ms) >= 200U)
     {
       uint8_t g = s_last_gray_mask;
@@ -243,6 +252,8 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 static void Motor_SetDuty(uint16_t left, uint16_t right)
 {
+  s_cmd_pwm_l = left;
+  s_cmd_pwm_r = right;
   __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, left);
   __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, right);
 }
@@ -303,6 +314,7 @@ static void Motor_RuntimeInit(void)
   Motor_ResetEncBase();
   s_drug_present = IR_DrugPresent();
   LED_Update(s_drug_present);
+  BEEP_Set(0);
   Motor_SetForward();
   Motor_Stop();
   LOGI("Motor runtime init done, compensation L=%u/%u", (unsigned int)MOTOR_L_COMP_NUM, (unsigned int)MOTOR_L_COMP_DEN);
@@ -412,6 +424,49 @@ static void LED_Update(uint8_t drug_present)
 {
   HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, (drug_present != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, (drug_present != 0U) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+}
+
+static void BEEP_Set(uint8_t on)
+{
+  s_beep_on = (on != 0U) ? 1U : 0U;
+  HAL_GPIO_WritePin(BEEP_GPIO_Port, BEEP_Pin, s_beep_on ? BEEP_ACTIVE_LEVEL : BEEP_IDLE_LEVEL);
+}
+
+static void BEEP_Update(void)
+{
+  uint32_t now = HAL_GetTick();
+  uint8_t should_alert = 0;
+
+  /* pickup reminder: drug detected and chassis is stopped */
+  if ((s_drug_present != 0U) && (s_cmd_pwm_l == 0U) && (s_cmd_pwm_r == 0U))
+  {
+    should_alert = 1U;
+  }
+
+  if (should_alert == 0U)
+  {
+    BEEP_Set(0);
+    s_last_beep_tick_ms = now;
+    return;
+  }
+
+  /* 150ms ON + 350ms OFF */
+  if (s_beep_on != 0U)
+  {
+    if ((now - s_last_beep_tick_ms) >= 150U)
+    {
+      BEEP_Set(0);
+      s_last_beep_tick_ms = now;
+    }
+  }
+  else
+  {
+    if ((now - s_last_beep_tick_ms) >= 350U)
+    {
+      BEEP_Set(1);
+      s_last_beep_tick_ms = now;
+    }
+  }
 }
 
 /* USER CODE END 4 */
